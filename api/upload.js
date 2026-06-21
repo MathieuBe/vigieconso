@@ -1,37 +1,30 @@
-// netlify/functions/upload.js
-const { supabaseAdmin, ok, err, checkAuth, cors } = require('./_shared');
+const { createClient } = require('@supabase/supabase-js');
 
-exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors() };
-  if (event.httpMethod !== 'POST') return err('Méthode non supportée', 405);
-  if (!checkAuth(event)) return err('Non autorisé', 401);
+function checkAuth(req) {
+  const token = (req.headers['authorization']||'').replace('Bearer ','');
+  return token === (process.env.ADMIN_PASSWORD||'');
+}
+
+module.exports = async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Methode non supportee' });
+  if (!checkAuth(req)) return res.status(401).json({ error: 'Non autorise' });
 
   try {
-    const body = JSON.parse(event.body || '{}');
-    // body.file = base64 string, body.filename, body.mimetype
-    const { file, filename, mimetype } = body;
-    if (!file || !filename) return err('Fichier manquant');
-
-    const db = supabaseAdmin();
+    const { file, filename, mimetype } = req.body;
+    if (!file || !filename) return res.status(400).json({ error: 'Fichier manquant' });
+    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const buffer = Buffer.from(file, 'base64');
     const ext = filename.split('.').pop().toLowerCase();
-    const safeName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-
-    const { data, error } = await db.storage
-      .from('article-images')
-      .upload(safeName, buffer, {
-        contentType: mimetype || 'image/jpeg',
-        upsert: false,
-      });
-
-    if (error) return err(error.message, 500);
-
-    const { data: { publicUrl } } = db.storage
-      .from('article-images')
-      .getPublicUrl(safeName);
-
-    return ok({ url: publicUrl });
-  } catch (e) {
-    return err(e.message, 500);
+    const safeName = Date.now() + '-' + Math.random().toString(36).slice(2) + '.' + ext;
+    const { error } = await db.storage.from('article-images').upload(safeName, buffer, { contentType: mimetype || 'image/jpeg' });
+    if (error) return res.status(500).json({ error: error.message });
+    const { data: { publicUrl } } = db.storage.from('article-images').getPublicUrl(safeName);
+    return res.status(200).json({ url: publicUrl });
+  } catch(e) {
+    return res.status(500).json({ error: e.message });
   }
 };
