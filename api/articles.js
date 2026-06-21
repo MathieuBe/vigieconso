@@ -1,99 +1,73 @@
-// netlify/functions/articles.js
-const { supabaseAdmin, ok, err, checkAuth, slugify, cors } = require('./_shared');
+const { createClient } = require('@supabase/supabase-js');
 
-exports.handler = async (event) => {
-  // CORS preflight
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors() };
+function db() { return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY); }
+function auth(req) {
+  const t = (req.headers['authorization']||'').replace('Bearer ','');
+  return t === (process.env.ADMIN_PASSWORD||'') || t === (process.env.WEBHOOK_SECRET||'');
+}
+function slug(t) { return t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 
-  const db = supabaseAdmin();
-  const method = event.httpMethod;
-  const path = event.path.replace(/^\/api\/articles\/?/, '');
-  const slug = path.split('/')[0] || null;
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization');
+  if (req.method==='OPTIONS') return res.status(200).end();
 
-  // ── GET /api/articles ── (public, published only)
-  // ── GET /api/articles?all=1 ── (admin, all)
-  if (method === 'GET' && !slug) {
-    const isAdmin = checkAuth(event);
-    const all = event.queryStringParameters?.all === '1';
-    if (all && !isAdmin) return err('Non autorisé', 401);
+  const { slug: s } = req.query;
 
-    let query = db.from('articles').select('id,title,slug,category,author,lead,image_url,published,published_at,created_at,updated_at');
-    if (!all) query = query.eq('published', true);
-    query = query.order('published_at', { ascending: false, nullsFirst: false })
-                 .order('created_at', { ascending: false });
-
-    const { data, error } = await query;
-    if (error) return err(error.message, 500);
-    return ok(data);
+  if (req.method==='GET' && !s) {
+    const all = req.query.all==='1';
+    if (all && !auth(req)) return res.status(401).json({error:'Non autorise'});
+    let q = db().from('articles').select('id,title,slug,category,author,lead,image_url,published,published_at,created_at');
+    if (!all) q = q.eq('published',true);
+    q = q.order('published_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false});
+    const {data,error} = await q;
+    if (error) return res.status(500).json({error:error.message});
+    return res.status(200).json(data);
   }
 
-  // ── GET /api/articles/:slug ── (public for published, admin for drafts)
-  if (method === 'GET' && slug) {
-    const isAdmin = checkAuth(event);
-    let query = db.from('articles').select('*').eq('slug', slug).single();
-    const { data, error } = await query;
-    if (error) return err('Article introuvable', 404);
-    if (!data.published && !isAdmin) return err('Article introuvable', 404);
-    return ok(data);
+  if (req.method==='GET' && s) {
+    const {data,error} = await db().from('articles').select('*').eq('slug',s).single();
+    if (error) return res.status(404).json({error:'Introuvable'});
+    if (!data.published && !auth(req)) return res.status(404).json({error:'Introuvable'});
+    return res.status(200).json(data);
   }
 
-  // All write operations require auth
-  if (!checkAuth(event)) return err('Non autorisé', 401);
+  if (!auth(req)) return res.status(401).json({error:'Non autorise'});
 
-  // ── POST /api/articles ── create
-  if (method === 'POST') {
-    const body = JSON.parse(event.body || '{}');
-    if (!body.title) return err('Titre obligatoire');
-
-    const slug = slugify(body.title);
-    const payload = {
-      title: body.title,
-      slug,
-      category: body.category,
-      author: body.author || null,
-      lead: body.lead || null,
-      body: body.body || null,
-      image_url: body.image_url || null,
-      published: body.published || false,
-      published_at: body.published ? new Date().toISOString() : null,
-    };
-
-    const { data, error } = await db.from('articles').insert(payload).select().single();
-    if (error) return err(error.message, 500);
-    return ok(data, 201);
+  if (req.method==='POST') {
+    const b = req.body;
+    if (!b.title) return res.status(400).json({error:'Titre obligatoire'});
+    const {data,error} = await db().from('articles').insert({
+      title:b.title, slug:slug(b.title), category:b.category, author:b.author||null,
+      lead:b.lead||null, body:b.body||null, image_url:b.image_url||null,
+      published:b.published||false, published_at:b.published?new Date().toISOString():null
+    }).select().single();
+    if (error) return res.status(500).json({error:error.message});
+    return res.status(201).json(data);
   }
 
-  // ── PUT /api/articles/:slug ── update
-  if (method === 'PUT' && slug) {
-    const body = JSON.parse(event.body || '{}');
-    const { data: existing } = await db.from('articles').select('id,published,published_at').eq('slug', slug).single();
-    if (!existing) return err('Article introuvable', 404);
-
-    const newSlug = body.title ? slugify(body.title) : slug;
-    const payload = {
-      ...(body.title && { title: body.title, slug: newSlug }),
-      ...(body.category !== undefined && { category: body.category }),
-      ...(body.author !== undefined && { author: body.author }),
-      ...(body.lead !== undefined && { lead: body.lead }),
-      ...(body.body !== undefined && { body: body.body }),
-      ...(body.image_url !== undefined && { image_url: body.image_url }),
-      ...(body.published !== undefined && {
-        published: body.published,
-        published_at: body.published && !existing.published_at ? new Date().toISOString() : existing.published_at
-      }),
-    };
-
-    const { data, error } = await db.from('articles').update(payload).eq('id', existing.id).select().single();
-    if (error) return err(error.message, 500);
-    return ok(data);
+  if (req.method==='PUT' && s) {
+    const b = req.body;
+    const {data:ex} = await db().from('articles').select('id,published_at').eq('slug',s).single();
+    if (!ex) return res.status(404).json({error:'Introuvable'});
+    const {data,error} = await db().from('articles').update({
+      ...(b.title&&{title:b.title,slug:slug(b.title)}),
+      ...(b.category!==undefined&&{category:b.category}),
+      ...(b.author!==undefined&&{author:b.author}),
+      ...(b.lead!==undefined&&{lead:b.lead}),
+      ...(b.body!==undefined&&{body:b.body}),
+      ...(b.image_url!==undefined&&{image_url:b.image_url}),
+      ...(b.published!==undefined&&{published:b.published,published_at:b.published&&!ex.published_at?new Date().toISOString():ex.published_at}),
+    }).eq('id',ex.id).select().single();
+    if (error) return res.status(500).json({error:error.message});
+    return res.status(200).json(data);
   }
 
-  // ── DELETE /api/articles/:slug ──
-  if (method === 'DELETE' && slug) {
-    const { error } = await db.from('articles').delete().eq('slug', slug);
-    if (error) return err(error.message, 500);
-    return ok({ deleted: true });
+  if (req.method==='DELETE' && s) {
+    await db().from('articles').delete().eq('slug',s);
+    return res.status(200).json({deleted:true});
   }
 
-  return err('Méthode non supportée', 405);
-};
+  return res.status(405).json({error:'Methode non supportee'});
+}
