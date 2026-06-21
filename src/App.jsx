@@ -315,7 +315,7 @@ function ArticlePage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/articles/${slug}`)
+    fetch(`/api/article/${slug}`)
       .then(r => r.json())
       .then(a => { setArticle(a); setLoading(false) })
       .catch(() => setLoading(false))
@@ -481,7 +481,7 @@ function AdminPage() {
 
   async function deleteArticle(slug) {
     if (!confirm('Supprimer cet article ?')) return
-    await fetch(`/api/articles/${slug}`, { method: 'DELETE', headers: { Authorization: `Bearer ${pwd}` } })
+    await fetch(`/api/article/${slug}`, { method: 'DELETE', headers: { Authorization: `Bearer ${pwd}` } })
     loadAll(); setMsg('Article supprime')
   }
 
