@@ -315,7 +315,7 @@ function ArticlePage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/article/${slug}`)
+    fetch(`/api/articles?slug=${slug}`)
       .then(r => r.json())
       .then(a => { setArticle(a); setLoading(false) })
       .catch(() => setLoading(false))
@@ -471,7 +471,7 @@ function AdminPage() {
     setLoading(true)
     const payload = { title, category, author, lead, body, image_url: imageUrl || null, published: status === 'published' }
     const method = editSlug ? 'PUT' : 'POST'
-    const url = editSlug ? `/api/articles/${editSlug}` : '/api/articles'
+    const url = editSlug ? `/api/articles?slug=${editSlug}` : '/api/articles'
     const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pwd}` }, body: JSON.stringify(payload) })
     const d = await r.json()
     if (r.ok) { setMsg(status === 'published' ? 'Article publie !' : 'Brouillon enregistre'); resetForm(); loadAll() }
@@ -481,7 +481,7 @@ function AdminPage() {
 
   async function deleteArticle(slug) {
     if (!confirm('Supprimer cet article ?')) return
-    await fetch(`/api/article/${slug}`, { method: 'DELETE', headers: { Authorization: `Bearer ${pwd}` } })
+    await fetch(`/api/articles?slug=${slug}`, { method: 'DELETE', headers: { Authorization: `Bearer ${pwd}` } })
     loadAll(); setMsg('Article supprime')
   }
 
