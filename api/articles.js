@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization');
   if (req.method==='OPTIONS') return res.status(200).end();
 
-  const { slug: s } = req.query;
+  const { slug: s } = req.query; console.log("QUERY:", JSON.stringify(req.query));
 
   if (req.method==='GET' && !s) {
     const all = req.query.all==='1';
