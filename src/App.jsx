@@ -574,10 +574,25 @@ function AdminPage() {
     loadAll(); setMsg('Article supprime')
   }
 
-  function editArticle(a) {
-    setEditSlug(a.slug); setTitle(a.title); setCategory(a.category); setAuthor(a.author || '')
-    setLead(a.lead || ''); setBody(a.body || ''); setImageUrl(a.image_url || '')
-    setTab('editor')
+  async function editArticle(a) {
+    // Fetch full article to get body field (not included in list)
+    try {
+      const r = await fetch(`/api/articles?slug=${a.slug}`, { headers: { Authorization: `Bearer ${pwd}` } })
+      const full = await r.json()
+      setEditSlug(full.slug)
+      setTitle(full.title || '')
+      setCategory(full.category || CATEGORIES[0])
+      setAuthor(full.author || '')
+      setLead(full.lead || '')
+      setBody(full.body || '')
+      setImageUrl(full.image_url || '')
+      setTab('editor')
+    } catch(e) {
+      // Fallback to partial data
+      setEditSlug(a.slug); setTitle(a.title); setCategory(a.category); setAuthor(a.author || '')
+      setLead(a.lead || ''); setBody(a.body || ''); setImageUrl(a.image_url || '')
+      setTab('editor')
+    }
   }
 
   function resetForm() {
@@ -764,20 +779,7 @@ function AdminPage() {
                 <textarea value={lead} onChange={e => setLead(e.target.value)} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Corps de l\'article</label>
-                <div style={{ display:'flex', gap:6, marginBottom:6, flexWrap:'wrap' }}>
-                  {[['G','bold'],['I','italic'],['H2','h2'],['H3','h3'],['❝','blockquote'],['¶','p']].map(([label, cmd]) => (
-                    <button key={cmd} type="button" onMouseDown={e => { e.preventDefault();
-                      const editor = document.getElementById('body-editor');
-                      if (cmd==='h2'||cmd==='h3'||cmd==='blockquote'||cmd==='p') {
-                        const sel=window.getSelection(); if(!sel||!sel.rangeCount) return;
-                        const el=document.createElement(cmd); el.textContent=sel.toString()||' ';
-                        sel.getRangeAt(0).deleteContents(); sel.getRangeAt(0).insertNode(el);
-                      } else { document.execCommand(cmd,false,null); }
-                      editor.focus();
-                    }} style={{ padding:'4px 10px', background:'#2E3540', border:'1px solid #3A3F4A', color:'#C9A84C', fontSize:12, fontWeight:700, cursor:'pointer', borderRadius:4 }}>{label}</button>
-                  ))}
-                </div>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Corps de l&apos;article</label>
                 <BodyEditor body={body} onChange={setBody} />
               </div>
             </div>
