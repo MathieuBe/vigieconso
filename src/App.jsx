@@ -44,7 +44,7 @@ function Header({ articles = [] }) {
   }, [])
 
   const alerts = articles.slice(0, 5).map(a => a.title).filter(Boolean)
-  const allAlerts = alerts.length ? [...alerts, ...alerts] : ['Vigie Conso — Ce que les consommateurs disent avant que les entreprises l entendent']
+  const allAlerts = alerts.length ? [...alerts, ...alerts] : ['Vigie Conso — Ce que les consommateurs disent avant que les entreprises l\'entendent']
 
   return (
     <header style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000, background: BRAND.navy }}>
@@ -63,7 +63,7 @@ function Header({ articles = [] }) {
               Vigie <span style={{ color: BRAND.red }}>Conso</span>
             </div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', letterSpacing: '.06em', textTransform: 'uppercase', marginTop: 3 }}>
-              Ce que les consommateurs disent avant que les entreprises l entendent
+              Ce que les consommateurs disent avant que les entreprises l'entendent
             </div>
           </div>
         </div>
@@ -223,7 +223,21 @@ function SocialWall({ posts }) {
                 </div>
                 <div style={{ fontSize: 10, color: BRAND.slate, whiteSpace: 'nowrap' }}>{p.post_date || ''}</div>
               </div>
-              <div dangerouslySetInnerHTML={{ __html: p.embed_code }} />
+              <div
+              ref={el => {
+                if (!el) return;
+                el.innerHTML = p.embed_code;
+                // Re-execute scripts inside embed code
+                el.querySelectorAll('script').forEach(old => {
+                  const s = document.createElement('script');
+                  if (old.src) { s.src = old.src; s.async = true; }
+                  else { s.textContent = old.textContent; }
+                  document.body.appendChild(s);
+                  old.remove();
+                });
+              }}
+              style={{ minHeight: p.embed_code.includes('iframe') ? 200 : 'auto', overflow:'hidden' }}
+            />
             </div>
           ))}
         </div>
@@ -242,7 +256,7 @@ function Footer() {
             Vigie <span style={{ color: BRAND.red }}>Conso</span>
           </div>
           <p style={{ fontSize: 12, fontStyle: 'italic', color: 'rgba(248,249,250,.45)', lineHeight: 1.6, marginBottom: 24, fontFamily: 'Playfair Display, serif' }}>
-            Ce que les consommateurs disent avant que les entreprises l entendent.
+            Ce que les consommateurs disent avant que les entreprises l'entendent.
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, border: '1px solid rgba(255,255,255,.1)', background: 'rgba(255,255,255,.04)' }}>
             <div style={{ width: 40, height: 40, background: BRAND.gold, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: 'Playfair Display, serif', fontSize: 16, fontWeight: 900, color: BRAND.navy }}>LC</div>
@@ -315,7 +329,7 @@ function ArticlePage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/articles?slug=${slug}`)
+    fetch(`/api/articles/${slug}`)
       .then(r => r.json())
       .then(a => { setArticle(a); setLoading(false) })
       .catch(() => setLoading(false))
@@ -471,7 +485,7 @@ function AdminPage() {
     setLoading(true)
     const payload = { title, category, author, lead, body, image_url: imageUrl || null, published: status === 'published' }
     const method = editSlug ? 'PUT' : 'POST'
-    const url = editSlug ? `/api/articles?slug=${editSlug}` : '/api/articles'
+    const url = editSlug ? `/api/articles/${editSlug}` : '/api/articles'
     const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pwd}` }, body: JSON.stringify(payload) })
     const d = await r.json()
     if (r.ok) { setMsg(status === 'published' ? 'Article publie !' : 'Brouillon enregistre'); resetForm(); loadAll() }
@@ -481,7 +495,7 @@ function AdminPage() {
 
   async function deleteArticle(slug) {
     if (!confirm('Supprimer cet article ?')) return
-    await fetch(`/api/articles?slug=${slug}`, { method: 'DELETE', headers: { Authorization: `Bearer ${pwd}` } })
+    await fetch(`/api/articles/${slug}`, { method: 'DELETE', headers: { Authorization: `Bearer ${pwd}` } })
     loadAll(); setMsg('Article supprime')
   }
 
@@ -675,8 +689,28 @@ function AdminPage() {
                 <textarea value={lead} onChange={e => setLead(e.target.value)} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Corps de l article</label>
-                <textarea value={body} onChange={e => setBody(e.target.value)} rows={15} placeholder="HTML avec h2, p, blockquote..." style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: 13 }} />
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>Corps de l\'article</label>
+                <div style={{ display:'flex', gap:6, marginBottom:6, flexWrap:'wrap' }}>
+                  {[['G','bold'],['I','italic'],['H2','h2'],['H3','h3'],['❝','blockquote'],['¶','p']].map(([label, cmd]) => (
+                    <button key={cmd} type="button" onMouseDown={e => { e.preventDefault();
+                      const editor = document.getElementById('body-editor');
+                      if (cmd==='h2'||cmd==='h3'||cmd==='blockquote'||cmd==='p') {
+                        const sel=window.getSelection(); if(!sel||!sel.rangeCount) return;
+                        const el=document.createElement(cmd); el.textContent=sel.toString()||' ';
+                        sel.getRangeAt(0).deleteContents(); sel.getRangeAt(0).insertNode(el);
+                      } else { document.execCommand(cmd,false,null); }
+                      editor.focus();
+                    }} style={{ padding:'4px 10px', background:'#2E3540', border:'1px solid #3A3F4A', color:'#C9A84C', fontSize:12, fontWeight:700, cursor:'pointer', borderRadius:4 }}>{label}</button>
+                  ))}
+                </div>
+                <div
+                  id="body-editor"
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={e => setBody(e.currentTarget.innerHTML)}
+                  dangerouslySetInnerHTML={{ __html: body }}
+                  style={{ width:'100%', minHeight:320, padding:'12px 16px', border:'1px solid #3A3F4A', fontFamily:'Georgia,serif', fontSize:15, lineHeight:1.8, outline:'none', overflowY:'auto', backgroundColor:'#1A1E24', color:'white', boxSizing:'border-box' }}
+                />
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
