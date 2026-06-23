@@ -434,6 +434,81 @@ function CategoryPage() {
   )
 }
 
+// ── BODY EDITOR (contentEditable sans conflit React) ──
+function BodyEditor({ body, onChange }) {
+  const ref = React.useRef(null)
+  const lastBody = React.useRef(body)
+
+  // Only set innerHTML when body changes externally (load from server, AI generation)
+  React.useEffect(() => {
+    if (ref.current && body !== lastBody.current) {
+      ref.current.innerHTML = body || ''
+      lastBody.current = body
+    }
+  }, [body])
+
+  const handleInput = () => {
+    const html = ref.current.innerHTML
+    lastBody.current = html
+    onChange(html)
+  }
+
+  const execCmd = (cmd, val) => {
+    ref.current.focus()
+    document.execCommand(cmd, false, val || null)
+  }
+
+  const insertTag = (tag) => {
+    ref.current.focus()
+    const sel = window.getSelection()
+    if (!sel || !sel.rangeCount) return
+    const el = document.createElement(tag)
+    el.textContent = sel.toString() || (tag === 'p' ? 'Nouveau paragraphe' : tag === 'blockquote' ? 'Citation' : 'Titre')
+    const range = sel.getRangeAt(0)
+    range.deleteContents()
+    range.insertNode(el)
+    // Move cursor after inserted element
+    range.setStartAfter(el)
+    range.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(range)
+    handleInput()
+  }
+
+  const btns = [
+    { l: 'G', fn: () => execCmd('bold') },
+    { l: 'I', fn: () => execCmd('italic') },
+    { l: 'H2', fn: () => insertTag('h2') },
+    { l: 'H3', fn: () => insertTag('h3') },
+    { l: '❝', fn: () => insertTag('blockquote') },
+    { l: '¶', fn: () => insertTag('p') },
+  ]
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:6, marginBottom:6, flexWrap:'wrap' }}>
+        {btns.map(b => (
+          <button key={b.l} type="button" onMouseDown={e => { e.preventDefault(); b.fn(); }}
+            style={{ padding:'4px 10px', background:'#2E3540', border:'1px solid #3A3F4A', color:'#C9A84C', fontSize:12, fontWeight:700, cursor:'pointer', borderRadius:4 }}>
+            {b.l}
+          </button>
+        ))}
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={handleInput}
+        style={{ width:'100%', minHeight:320, padding:'14px 16px', border:'1px solid #3A3F4A',
+          fontFamily:'Georgia,serif', fontSize:15, lineHeight:1.8, outline:'none',
+          overflowY:'auto', backgroundColor:'#1A1E24', color:'white', boxSizing:'border-box',
+          cursor:'text' }}
+      />
+    </div>
+  )
+}
+
+
 // ── ADMIN PAGE ──
 function AdminPage() {
   const [authed, setAuthed] = useState(false)
@@ -485,7 +560,7 @@ function AdminPage() {
     setLoading(true)
     const payload = { title, category, author, lead, body, image_url: imageUrl || null, published: status === 'published' }
     const method = editSlug ? 'PUT' : 'POST'
-    const url = editSlug ? `/api/articles/${editSlug}` : '/api/articles'
+    const url = editSlug ? `/api/articles?slug=${editSlug}` : '/api/articles'
     const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pwd}` }, body: JSON.stringify(payload) })
     const d = await r.json()
     if (r.ok) { setMsg(status === 'published' ? 'Article publie !' : 'Brouillon enregistre'); resetForm(); loadAll() }
@@ -495,7 +570,7 @@ function AdminPage() {
 
   async function deleteArticle(slug) {
     if (!confirm('Supprimer cet article ?')) return
-    await fetch(`/api/articles/${slug}`, { method: 'DELETE', headers: { Authorization: `Bearer ${pwd}` } })
+    await fetch(`/api/articles?slug=${slug}`, { method: 'DELETE', headers: { Authorization: `Bearer ${pwd}` } })
     loadAll(); setMsg('Article supprime')
   }
 
@@ -703,14 +778,7 @@ function AdminPage() {
                     }} style={{ padding:'4px 10px', background:'#2E3540', border:'1px solid #3A3F4A', color:'#C9A84C', fontSize:12, fontWeight:700, cursor:'pointer', borderRadius:4 }}>{label}</button>
                   ))}
                 </div>
-                <div
-                  id="body-editor"
-                  contentEditable
-                  suppressContentEditableWarning
-                  onInput={e => setBody(e.currentTarget.innerHTML)}
-                  dangerouslySetInnerHTML={{ __html: body }}
-                  style={{ width:'100%', minHeight:320, padding:'12px 16px', border:'1px solid #3A3F4A', fontFamily:'Georgia,serif', fontSize:15, lineHeight:1.8, outline:'none', overflowY:'auto', backgroundColor:'#1A1E24', color:'white', boxSizing:'border-box' }}
-                />
+                <BodyEditor body={body} onChange={setBody} />
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
