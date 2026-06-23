@@ -436,11 +436,11 @@ function CategoryPage() {
 
 // ── BODY EDITOR (contentEditable sans conflit React) ──
 function BodyEditor({ body, onChange }) {
-  const ref = React.useRef(null)
-  const lastBody = React.useRef(body)
+  const ref = useRef(null)
+  const lastBody = useRef(body)
 
   // Only set innerHTML when body changes externally (load from server, AI generation)
-  React.useEffect(() => {
+  useEffect(() => {
     if (ref.current && body !== lastBody.current) {
       ref.current.innerHTML = body || ''
       lastBody.current = body
