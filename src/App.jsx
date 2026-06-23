@@ -329,7 +329,7 @@ function ArticlePage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/articles/${slug}`)
+    fetch(`/api/articles?slug=${slug}`)
       .then(r => r.json())
       .then(a => { setArticle(a); setLoading(false) })
       .catch(() => setLoading(false))
